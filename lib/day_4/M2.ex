@@ -1,37 +1,16 @@
 defmodule Day4.M2 do
-  def winning_row?(bingo) do
-    bingo
-    |> Enum.reduce(false, fn
-      [true, true, true, true, true], _ -> true
-      _, acc -> acc
+  def won_bingo?(bingo) do
+    won_bingo_row?(bingo) || won_bingo_column?(bingo)
+  end
+
+  def won_bingo_column?(bingo) do
+    Enum.any?(0..4, fn column ->
+      Enum.all?(0..4, fn row -> bingo |> Enum.at(row) |> Enum.at(column) end)
     end)
   end
 
-  def winning_column?(bingo) do
-    0..(length(bingo) - 1)
-    |> Enum.reduce(false, fn column_index, acc ->
-      column =
-        0..(length(bingo) - 1)
-        |> Enum.map(fn row_index -> bingo |> Enum.at(row_index) |> Enum.at(column_index) end)
-
-      case column do
-        [true, true, true, true, true] -> true
-        _ -> acc
-      end
-    end)
-  end
-
-  def calculate_sum(winning_matrix, winning_bingo) do
-    0..(length(winning_matrix) - 1)
-    |> Enum.reduce(0, fn row_index, acc ->
-      acc +
-        Enum.reduce(0..(length(winning_matrix) - 1), 0, fn column_index, acc ->
-          case winning_bingo |> Enum.at(row_index) |> Enum.at(column_index) do
-            false -> acc + (winning_matrix |> Enum.at(row_index) |> Enum.at(column_index))
-            true -> acc
-          end
-        end)
-    end)
+  def won_bingo_row?(bingo) do
+    Enum.any?(bingo, fn row -> Enum.all?(row, fn col -> col end) end)
   end
 
   def call do
@@ -75,79 +54,64 @@ defmodule Day4.M2 do
         end)
       end)
 
-    winning_bingo_info =
-      numbers
-      |> Enum.reduce(
-        %{
-          bingos: bingos,
-          winning_info: []
-        },
-        fn number, acc ->
+    numbers
+    |> Enum.reduce(%{bingos: bingos, last_won_bingo_index: nil, last_won_number: nil}, fn
+      _number, %{last_won_number: last_won_number} = acc when not is_nil(last_won_number) ->
+        acc
+
+      number, acc ->
+        new_bingos =
+          acc.bingos
+          |> Enum.with_index(fn bingo, bingo_index ->
+            bingo
+            |> Enum.with_index(fn row, row_index ->
+              row
+              |> Enum.with_index(fn column, column_index ->
+                column || matrices |> Enum.at(bingo_index) |> Enum.at(row_index) |> Enum.at(column_index) == number
+              end)
+            end)
+          end)
+
+        won_bingos_count = Enum.count(new_bingos, &won_bingo?/1)
+        total_bingos_count = length(acc.bingos)
+
+        acc =
           cond do
-            # !is_nil(acc.winning_number) ->
-            #   acc
+            won_bingos_count == total_bingos_count ->
+              %{acc | last_won_number: number}
+
+            won_bingos_count == total_bingos_count - 1 ->
+              last_won_bingo_index = Enum.find_index(new_bingos, fn bingo -> !won_bingo?(bingo) end)
+              %{acc | last_won_bingo_index: last_won_bingo_index}
 
             true ->
-              new_bingos =
-                acc.bingos
-                |> Enum.with_index()
-                |> Enum.map(fn {bingo, bingo_index} ->
-                  bingo
-                  |> Enum.with_index()
-                  |> Enum.map(fn {row, row_index} ->
-                    row
-                    |> Enum.with_index()
-                    |> Enum.map(fn {column, column_index} ->
-                      case matrices
-                           |> Enum.at(bingo_index)
-                           |> Enum.at(row_index)
-                           |> Enum.at(column_index) do
-                        ^number -> true
-                        _ -> column
-                      end
-                    end)
-                  end)
-                end)
-
-              new_winning_bingo_index =
-                new_bingos
-                |> Enum.with_index()
-                |> Enum.reduce(nil, fn {bingo, bingo_index}, acc ->
-                  cond do
-                    !is_nil(acc) -> acc
-                    winning_row?(bingo) || winning_column?(bingo) -> bingo_index
-                    true -> acc
-                  end
-                end)
-
-              case new_winning_bingo_index do
-                nil ->
-                  %{acc | bingos: new_bingos}
-
-                _ ->
-                  winning_number = number
-
-                  %{
-                    acc
-                    | bingos: new_bingos,
-                      winning_info: [
-                        %{
-                          winning_number: winning_number,
-                          winning_bingo_index: new_winning_bingo_index
-                        }
-                        | acc.winning_info
-                      ]
-                  }
-              end
+              acc
           end
-        end
-      )
 
-    require IEx
-    IEx.pry()
-    # winning_bingo = Enum.at(winning_bingo_info.bingos, winning_bingo_info.winning_bingo_index)
-    # winning_matrix = Enum.at(matrices, winning_bingo_info.winning_bingo_index)
+        %{acc | bingos: new_bingos}
+    end)
+    |> then(fn result ->
+      matrix = Enum.at(matrices, result.last_won_bingo_index)
+      bingo = Enum.at(result.bingos, result.last_won_bingo_index)
 
-    # winning_bingo_info.winning_number * calculate_sum(winning_matrix, winning_bingo)
+      mult =
+        bingo
+        |> Enum.with_index()
+        |> Enum.reduce(0, fn {row, row_index}, acc ->
+          result =
+            row
+            |> Enum.with_index()
+            |> Enum.reduce(0, fn {column, column_index}, acc ->
+              case column do
+                false -> acc + (matrix |> Enum.at(row_index) |> Enum.at(column_index))
+                true -> acc
+              end
+            end)
+
+          acc + result
+        end)
+
+      mult * result.last_won_number
+    end)
   end
 end
